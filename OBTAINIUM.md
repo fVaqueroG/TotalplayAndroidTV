@@ -1,19 +1,14 @@
-# Install through Obtainium
+# Install and update with Obtainium
 
-This repository builds an Android TV UI companion prototype, not a replacement for the official Totalplay player. The prototype guide does not play live channels. Keep the original Totalplay application installed.
+1. On your Android phone or Android TV, open Obtainium and choose **Add App**.
+2. Enter `https://github.com/fVaqueroG/TotalplayAndroidTV` as the source. Select the GitHub source type if asked.
+3. Install the latest `Totalplay-TV-Guide-*.apk` asset from **GitHub Releases**. The app's display name is **Totalplay TV Guide**. There is no need to download a workflow artifact ZIP.
+4. Open **⚙ Decoder** in the app, confirm your Totalplay decoder's LAN IP address, save it, and use **Test: open decoder guide** to check the decoder's response. This app sends LAN remote commands to the physical decoder; it does not itself display the provider's live video.
 
-1. On your Android TV open Obtainium and select Add App.
-2. Enter `https://github.com/fVaqueroG/TotalplayAndroidTV` as its GitHub source.
-3. Add the app, then install the latest `Totalplay-TV-Guide-*.apk` GitHub Release asset. Approve installation permission for Obtainium if prompted.
+**Persistent updates:** The current workflow requires the private keystore and password stored in GitHub Actions secrets; it verifies every release APK's signature. Obtainium can install subsequent releases in place, provided you retain **the same signing key and app package name**. If your installation was from an earlier temporary debug-signed prototype (before `v0.1.9-prototype`), uninstall **only Totalplay TV Guide** once before installing a persistently signed release; its signature cannot be changed in place. Do not remove the official Totalplay app. If you already installed `v0.1.9-prototype` or a later release signed using the private keystore, no signing-related reinstall should be needed.
 
-The app appears as **Totalplay TV Guide (prototype)** on Android TV. You do not need to install an Actions artifact ZIP; Obtainium uses the APK attached to the GitHub Release.
+**Protect your signing key:** keep a private copy of `totalplay-guide.p12` and its password. Never upload either to the public repo. Losing the signing key makes future compatible in-place updates impossible for users of that key.
 
-## Important: signing and updates
-
-The current workflow generates a debug-signed prototype APK using a temporary key on each GitHub Actions runner. Version codes increase between builds, but Android can reject an in-place update signed by a different key even if Obtainium detects the update. If that happens, uninstall **only** the Totalplay TV Guide prototype and install its newer APK. Do not uninstall the official Totalplay application.
-
-Reliable future in-place updates require a persistent private signing keystore stored in GitHub Actions secrets and reused for each release. Switching from the temporary debug signing key to a persistent key also requires one reinstall. Never commit a private keystore, passwords, or Totalplay credentials to this public repository.
-
-Releases: https://github.com/fVaqueroG/TotalplayAndroidTV/releases
+Releases: https://github.com/fVaqueroG/TotalplayAndroidTV/releases/latest
 
 Builds: https://github.com/fVaqueroG/TotalplayAndroidTV/actions/workflows/build.yml
