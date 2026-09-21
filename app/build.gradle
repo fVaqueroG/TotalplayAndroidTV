@@ -11,7 +11,7 @@ android {
     defaultConfig {
         applicationId 'com.fv.totalplaytv.ui'
         minSdk 26
-        targetSdk 32
+        targetSdk 33
         versionCode 1000 + ciBuildNumber
         versionName "0.1.${ciBuildNumber}-prototype"
     }
