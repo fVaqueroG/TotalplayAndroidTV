@@ -1,8 +1,9 @@
 plugins { id 'com.android.application' }
 
-// Every GitHub Actions build needs a newer Android versionCode so Obtainium
-// can recognize it as an update. Local builds keep the prototype baseline.
+// Each CI build gets a distinct Android versionCode for Obtainium update detection.
 def ciBuildNumber = (System.getenv('GITHUB_RUN_NUMBER') ?: '0').toInteger()
+def releaseStore = System.getenv('TV_SIGNING_STORE_FILE')
+def releasePassword = System.getenv('TV_SIGNING_PASSWORD')
 
 android {
     namespace 'com.fv.totalplaytv.ui'
@@ -13,6 +14,23 @@ android {
         targetSdk 32
         versionCode 1000 + ciBuildNumber
         versionName "0.1.${ciBuildNumber}-prototype"
+    }
+    signingConfigs {
+        if (releaseStore && releasePassword) {
+            obtainium {
+                storeFile file(releaseStore)
+                storePassword releasePassword
+                keyAlias 'totalplayguide'
+                keyPassword releasePassword
+            }
+        }
+    }
+    buildTypes {
+        release {
+            if (releaseStore && releasePassword) {
+                signingConfig signingConfigs.obtainium
+            }
+        }
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
