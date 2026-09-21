@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pointer_service_description">When you enable it, this service uses the TV remote arrows to move a pointer and Enter to tap only inside the original Totalplay app. It requires Android Accessibility permission to read the active app, filter D-pad keys, and send touch gestures. It does not record or transmit screen content, passwords, tokens or account information. Turn it off in Android Accessibility settings.</string>
+</resources>
