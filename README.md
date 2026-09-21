@@ -1,17 +1,23 @@
-# Totalplay Android TV — sign-in experiment
+# Totalplay Android TV — D-pad pointer prototype
 
-This repository currently builds a **limited, experimental companion** for Android TV. The app has one functioning sign-in action: it opens the independently installed, original signed Totalplay Android app, where you can sign in using Totalplay's own interface. The companion does not accept, collect, store or transmit account credentials, passwords or authentication tokens. It does **not** log in by itself, receive the official app's session, fetch your subscribed channel lineup, or play live video.
+This Android TV **companion** makes the independently installed, original signed Totalplay app usable with a D-pad without touching the provider's authentication, channel-list or video player. It is **not** an independent Totalplay client, APK modification, IPTV player or decoder remote. The original app must be installed on the same Android TV device.
 
-## What to test
+## Install and test
 
-1. Install the latest persistently signed APK through Obtainium or [GitHub Releases](https://github.com/fVaqueroG/TotalplayAndroidTV/releases/latest).
-2. Install the **original Totalplay app** independently on the **same Android device**. Do not replace the original package or signing certificate with this companion.
-3. Open the companion and select **OPEN OFFICIAL TOTALPLAY / SIGN IN**. Confirm whether the original app launches and allows you to sign in. If it crashes on Android TV, this prototype does not correct the crash.
+1. Update the companion through [GitHub Releases](https://github.com/fVaqueroG/TotalplayAndroidTV/releases/latest) / Obtainium. Keep the **original Totalplay app** installed, signed and logged in as before.
+2. Launch **Totalplay D-pad Pointer** and open **Android Accessibility settings** with its first button. Locate **Totalplay D-pad Pointer** under installed/downloaded services and enable it. Android may show a broad accessibility-permission warning: this is a system-level permission that can observe the active app and filter remote keys. Enable it only if you are comfortable with that permission; you can disable it again from the same menu.
+3. Return to the companion and select **Open original Totalplay**. In the original app, a green ring should appear near screen center.
+4. Arrows move the green ring in increments; hold them for faster movement. Enter/OK sends a simulated tap. **Back, Home, volume, and other buttons retain their existing behavior**. For a first test, point at a harmless button in the original app and press Enter.
 
-This is **not yet the simplified IPTV guide requested by the project owner**. It deliberately does not fabricate an account-specific channel list or claim that the vendor's authentication works in our separate APK. The original APK's login repository uses its own app-internal session handling, and the APK does not expose a login-result interface our separately signed package can just call. A functional standalone experience requires a verified and supported sign-in/session integration as well as the catalog and authorized playback flow.
+Only when the original package `com.TotalPlay.totalplay` is active will the service translate arrows/Enter; it does not attempt to navigate or tap any other apps. It does not read, record, store, or transmit passwords, text, account/session data, playback URLs or channel information. It requests accessibility window-content access only to recognize the foreground app, key filtering for arrows/Enter, and gesture dispatch for taps. The implementation does not request Internet access or any account login details. If the TV firmware disallows accessibility key filtering, the pointer may appear while arrows still fail to move it; this requires testing on the target TV.
 
-The previous decoder LAN remote was removed from the app's entry screen; controlling a set-top box is not the goal of this project. The previous HTML demo at `app/src/main/assets/index.html` is not the current native app UI and is not connected to a real account.
+## Limitations
 
-## Builds and signing
+- This version is a **remote pointer**, not semantic channel-to-channel navigation. It cannot yet scroll a touch-only guide, drag sliders, or reshape the original UI.
+- The existing Totalplay app retains its own portrait-oriented layouts; the companion does **not** make it a true 16:9 responsive TV app. Test navigation first and adjust screen layout as a separate project.
+- Accessibility overlay/gesture permissions may be restricted by some TV vendors. A simulated ADB tap working verifies the app receives touch input; it does not prove the accessibility service can capture D-pad events on your particular firmware.
+- Do not replace or re-sign the original APK: that could invalidate its working login and video playback.
 
-GitHub Actions builds, signs and publishes the APK on pushes to `main`. The workflow uses the privately configured `TOTALPLAY_KEYSTORE_B64` and `TOTALPLAY_KEYSTORE_PASSWORD` repository secrets and verifies the release signature. The official Totalplay APK, account secrets and playback tokens must **not** be committed to this public repository.
+## Build and update
+
+GitHub Actions signs releases with the persistent repository signing key. The companion keeps its original Android package ID `com.fv.totalplaytv.ui` so Obtainium can update existing signed companion installations. Never commit the original Totalplay APK, passwords, vendor client credentials or session tokens to this public repository.
