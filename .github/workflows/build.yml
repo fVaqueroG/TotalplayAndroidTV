@@ -1,4 +1,4 @@
-name: Build and publish Totalplay TV Guide prototype
+name: Build and publish Totalplay D-pad Pointer prototype
 
 on:
   push:
@@ -58,12 +58,12 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="v0.1.${GITHUB_RUN_NUMBER}-prototype"
-          NOTES='Android TV companion UI prototype only; channel playback requires the separate official Totalplay app. APK uses the persistent signing key for future in-place updates. Upgrading from an earlier temporary debug-signed prototype requires a one-time uninstall of only the prototype.'
+          NOTES='Experimental, user-enabled D-pad pointer companion for the original signed Totalplay app. Open companion, enable Totalplay D-pad Pointer under Android Accessibility settings, then open original Totalplay. Arrow keys move the pointer, Enter taps, Back remains unchanged. Original app login and playback remain inside Totalplay; this build does not create a standalone login, full guide, or 16:9 redesign. APK uses persistent signing key for in-place updates.'
           if gh release view "$VERSION" > /dev/null 2>&1; then
             gh release upload "$VERSION" "Totalplay-TV-Guide-${VERSION}.apk" --clobber
           else
             gh release create "$VERSION" "Totalplay-TV-Guide-${VERSION}.apk" \
               --target "$GITHUB_SHA" \
-              --title "Totalplay TV Guide $VERSION" \
+              --title "Totalplay D-pad Pointer $VERSION" \
               --notes "$NOTES"
           fi
