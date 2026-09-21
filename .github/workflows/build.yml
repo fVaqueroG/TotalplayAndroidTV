@@ -21,7 +21,7 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      # The setup-android default "tools" package no longer exists in the SDK.
+      # The old setup-android default "tools" SDK package no longer exists.
       - uses: android-actions/setup-android@v3
         with:
           packages: platform-tools
@@ -29,11 +29,32 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Build installable APK
-        run: gradle :app:assembleDebug --no-daemon
-      - name: Rename APK for Obtainium
+      - name: Build and sign the APK
+        env:
+          TV_KEYSTORE_B64: ${{ secrets.TOTALPLAY_KEYSTORE_B64 }}
+          TV_SIGNING_PASSWORD: ${{ secrets.TOTALPLAY_KEYSTORE_PASSWORD }}
+        shell: bash
         run: |
-          cp app/build/outputs/apk/debug/app-debug.apk "Totalplay-TV-Guide-v0.1.${GITHUB_RUN_NUMBER}-prototype.apk"
+          set -euo pipefail
+          VERSION="v0.1.${GITHUB_RUN_NUMBER}-prototype"
+          if [[ -n "$TV_KEYSTORE_B64" || -n "$TV_SIGNING_PASSWORD" ]]; then
+            if [[ -z "$TV_KEYSTORE_B64" || -z "$TV_SIGNING_PASSWORD" ]]; then
+              echo '::error::Both TOTALPLAY_KEYSTORE_B64 and TOTALPLAY_KEYSTORE_PASSWORD must be configured.'
+              exit 1
+            fi
+            export TV_SIGNING_STORE_FILE="$RUNNER_TEMP/totalplay-guide.p12"
+            printf '%s' "$TV_KEYSTORE_B64" | base64 --decode > "$TV_SIGNING_STORE_FILE"
+            keytool -list -storetype PKCS12 -keystore "$TV_SIGNING_STORE_FILE" -storepass "$TV_SIGNING_PASSWORD" -alias totalplayguide > /dev/null
+            gradle :app:assembleRelease --no-daemon
+            cp app/build/outputs/apk/release/app-release.apk "Totalplay-TV-Guide-${VERSION}.apk"
+            echo 'APK_SIGNING_STATUS=persistent' >> "$GITHUB_ENV"
+            echo 'APK signed using the persistent private GitHub Actions signing key.' >> "$GITHUB_STEP_SUMMARY"
+          else
+            gradle :app:assembleDebug --no-daemon
+            cp app/build/outputs/apk/debug/app-debug.apk "Totalplay-TV-Guide-${VERSION}.apk"
+            echo 'APK_SIGNING_STATUS=temporary' >> "$GITHUB_ENV"
+            echo '::warning::Temporary debug signing: later APKs may require a one-time reinstall. See OBTAINIUM.md.'
+          fi
       - uses: actions/upload-artifact@v4
         with:
           name: totalplay-tv-guide-prototype-apk
@@ -41,9 +62,20 @@ jobs:
       - name: Publish APK in GitHub Releases
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
+          set -euo pipefail
           VERSION="v0.1.${GITHUB_RUN_NUMBER}-prototype"
-          gh release create "$VERSION" "Totalplay-TV-Guide-${VERSION}.apk" \
-            --target "$GITHUB_SHA" \
-            --title "Totalplay TV Guide $VERSION" \
-            --notes "Android TV companion UI prototype only. Opens the official Totalplay app for authorized viewing; it does not play channels inside the guide. This APK is signed with the CI runner's temporary debug key. A future build can have a different signature and may require uninstalling this prototype before reinstalling. Do not remove the official Totalplay app."
+          if [[ "$APK_SIGNING_STATUS" == persistent ]]; then
+            NOTES='Android TV companion UI prototype only; channel playback requires the separate official Totalplay app. APK uses the persistent signing key for future in-place updates. Upgrading from an earlier temporary debug-signed prototype requires a one-time uninstall of only the prototype.'
+          else
+            NOTES='Android TV companion UI prototype only; it does not play channels in the guide. This APK uses a temporary CI debug signing key; later builds may require uninstalling only the prototype before reinstalling. Do not remove the official Totalplay app.'
+          fi
+          if gh release view "$VERSION" > /dev/null 2>&1; then
+            gh release upload "$VERSION" "Totalplay-TV-Guide-${VERSION}.apk" --clobber
+          else
+            gh release create "$VERSION" "Totalplay-TV-Guide-${VERSION}.apk" \
+              --target "$GITHUB_SHA" \
+              --title "Totalplay TV Guide $VERSION" \
+              --notes "$NOTES"
+          fi
