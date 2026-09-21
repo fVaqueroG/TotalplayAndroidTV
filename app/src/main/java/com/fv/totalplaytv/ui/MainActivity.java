@@ -5,64 +5,46 @@ import android.app.Activity;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
 import android.os.Bundle;
+import android.provider.Settings;
 import android.view.KeyEvent;
+import android.view.accessibility.AccessibilityManager;
+import android.accessibilityservice.AccessibilityServiceInfo;
 import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
-
 import org.json.JSONObject;
+import java.util.List;
 
-import java.io.IOException;
-import java.net.HttpURLConnection;
-import java.net.URLEncoder;
-import java.net.URL;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.Locale;
-import java.util.Set;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicBoolean;
-
-/** IPTV-style guide and LAN remote. Playback stays in the official Totalplay app/decoder. */
+/** Experimental guide: sign-in/playback remain within the independently installed official app. */
 public final class MainActivity extends Activity {
-    private static final String PREFS = "totalplay-guide-settings";
-    private static final String HOST = "decoder-ip";
-    private static final String DEFAULT_HOST = "192.168.100.17";
-    private static final Set<String> REMOTE_KEYS = new HashSet<>(Arrays.asList(
-            "up", "down", "left", "right", "ok", "back", "KEY_MENU", "KEY_GUIDE",
-            "channel_up", "channel_down", "volume_up", "volume_down", "mute",
-            "0", "1", "2", "3", "4", "5", "6", "7", "8", "9"));
-    private final ExecutorService remoteQueue = Executors.newSingleThreadExecutor();
-    private final AtomicBoolean tuning = new AtomicBoolean(false);
+    static final String OFFICIAL = "com.TotalPlay.totalplay";
+    static final String PREFS = "totalplay-guide-settings";
+    static final String SCANNING = "scan-official-guide";
+    static final String CHANNELS = "observed-official-channels";
+    static final String PENDING = "pending-official-channel";
+    static final String STATUS = "official-guide-status";
     private WebView webView;
 
     @SuppressLint("SetJavaScriptEnabled")
-    @Override public void onCreate(Bundle state) {
-        super.onCreate(state);
+    @Override public void onCreate(Bundle savedInstanceState) {
+        super.onCreate(savedInstanceState);
         getWindow().getDecorView().setSystemUiVisibility(5894 | 1024 | 512);
         webView = new WebView(this);
         webView.getSettings().setJavaScriptEnabled(true);
         webView.getSettings().setDomStorageEnabled(true);
-        webView.getSettings().setAllowFileAccess(true);
         webView.getSettings().setAllowContentAccess(false);
         webView.getSettings().setAllowFileAccessFromFileURLs(false);
         webView.getSettings().setAllowUniversalAccessFromFileURLs(false);
         webView.addJavascriptInterface(new Bridge(), "AndroidBridge");
         webView.setWebChromeClient(new WebChromeClient());
         webView.setWebViewClient(new WebViewClient() {
-            @Override public boolean shouldOverrideUrlLoading(WebView v, String url) {
-                return !url.startsWith("file:///android_asset/");
-            }
-            @Override public boolean shouldOverrideUrlLoading(WebView v, WebResourceRequest request) {
+            @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
                 return !request.getUrl().toString().startsWith("file:///android_asset/");
             }
-            @Override public void onPageFinished(WebView v, String url) {
-                v.evaluateJavascript("document.querySelector('#categories button')?.focus()", null);
-            }
+            @Override public void onPageFinished(WebView view, String url) { updateView(); }
         });
         webView.setFocusable(true);
         webView.setFocusableInTouchMode(true);
@@ -71,154 +53,111 @@ public final class MainActivity extends Activity {
         webView.requestFocus();
     }
 
-    private String decoderHost() {
-        return getSharedPreferences(PREFS, MODE_PRIVATE).getString(HOST, DEFAULT_HOST);
+    private boolean isInstalled() {
+        return getPackageManager().getLaunchIntentForPackage(OFFICIAL) != null;
     }
-
-    // Keep cleartext traffic strictly on user-selected private LAN IPv4 addresses; never allow remote URLs.
-    private static boolean privateIpv4(String host) {
-        if (host == null || !host.matches("[0-9]{1,3}(\\.[0-9]{1,3}){3}")) return false;
-        String[] segments = host.split("\\.");
-        int[] ip = new int[4];
-        for (int i = 0; i < 4; i++) {
-            try { ip[i] = Integer.parseInt(segments[i]); }
-            catch (NumberFormatException e) { return false; }
-            if (ip[i] < 0 || ip[i] > 255) return false;
+    private boolean accessibilityReady() {
+        AccessibilityManager am = (AccessibilityManager) getSystemService(ACCESSIBILITY_SERVICE);
+        if (am == null) return false;
+        List<AccessibilityServiceInfo> enabled = am.getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK);
+        for (AccessibilityServiceInfo info : enabled) {
+            if (info.getResolveInfo() != null && info.getResolveInfo().serviceInfo != null &&
+                getPackageName().equals(info.getResolveInfo().serviceInfo.packageName) &&
+                ChannelGuideAccessibilityService.class.getName().equals(info.getResolveInfo().serviceInfo.name)) return true;
         }
-        return ip[0] == 10 || (ip[0] == 172 && ip[1] >= 16 && ip[1] <= 31)
-                || (ip[0] == 192 && ip[1] == 168);
+        return false;
     }
-
-    private void sendKey(String host, String key) throws IOException {
-        if (!privateIpv4(host) || !REMOTE_KEYS.contains(key)) throw new IOException("Invalid decoder address or remote key");
-        String address = "http://" + host + "/RemoteControl/KeyHandling/sendKey?key="
-                + URLEncoder.encode(key, "UTF-8");
-        HttpURLConnection conn = (HttpURLConnection) new URL(address).openConnection();
+    private void openOfficial() {
+        Intent intent = getPackageManager().getLaunchIntentForPackage(OFFICIAL);
+        if (intent == null) {
+            Toast.makeText(this, "Install the original Totalplay app on this Android device first", Toast.LENGTH_LONG).show();
+            return;
+        }
+        try { startActivity(intent); }
+        catch (ActivityNotFoundException | SecurityException e) {
+            Toast.makeText(this, "Could not open the original Totalplay app", Toast.LENGTH_LONG).show();
+        }
+    }
+    private String stateJson() {
         try {
-            conn.setRequestMethod("GET");
-            conn.setConnectTimeout(3000);
-            conn.setReadTimeout(3000);
-            conn.setUseCaches(false);
-            int code = conn.getResponseCode();
-            if (code < 200 || code >= 300) throw new IOException("Decoder returned HTTP " + code);
-        } finally { conn.disconnect(); }
+            JSONObject obj = new JSONObject();
+            obj.put("officialInstalled", isInstalled());
+            obj.put("accessibilityReady", accessibilityReady());
+            obj.put("channels", new org.json.JSONArray(getSharedPreferences(PREFS, MODE_PRIVATE).getString(CHANNELS, "[]")));
+            obj.put("scanning", getSharedPreferences(PREFS, MODE_PRIVATE).getBoolean(SCANNING, false));
+            obj.put("pending", getSharedPreferences(PREFS, MODE_PRIVATE).getString(PENDING, ""));
+            obj.put("status", getSharedPreferences(PREFS, MODE_PRIVATE).getString(STATUS, "No channel data collected yet."));
+            return obj.toString();
+        } catch (Exception e) { return "{}"; }
     }
-
-    private void report(String action, boolean ok, String message) {
+    private void updateView() {
         runOnUiThread(() -> {
-            if (webView != null) webView.evaluateJavascript("window.__remoteResult && window.__remoteResult("
-                    + JSONObject.quote(action) + "," + ok + "," + JSONObject.quote(message) + ")", null);
+            if (webView != null) webView.evaluateJavascript("window.__loadState && window.__loadState(" + stateJson() + ")", null);
         });
     }
 
     public final class Bridge {
-        @JavascriptInterface public String getDecoderIp() { return decoderHost(); }
-
-        @JavascriptInterface public void saveDecoderIp(String input) {
-            String ip = input == null ? "" : input.trim();
-            if (!privateIpv4(ip)) {
-                report("settings", false, "Enter a private LAN IPv4 address (for example 192.168.100.17)");
-                return;
+        @JavascriptInterface public String getState() { return stateJson(); }
+        @JavascriptInterface public void openSignIn() { runOnUiThread(() -> {
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(SCANNING, false)
+                .putString(PENDING, "").putString(STATUS, "Sign in inside the original Totalplay app; passwords are never entered into this guide.").apply();
+            openOfficial();
+        }); }
+        @JavascriptInterface public void openAccessibilitySettings() { runOnUiThread(() -> {
+            try { startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)); }
+            catch (Exception e) { Toast.makeText(MainActivity.this, "Open Android Settings → Accessibility", Toast.LENGTH_LONG).show(); }
+        }); }
+        @JavascriptInterface public void scanOfficialGuide() { runOnUiThread(() -> {
+            if (!isInstalled() || !accessibilityReady()) {
+                Toast.makeText(MainActivity.this, "Install Totalplay and enable TV Guide Discovery in Accessibility first", Toast.LENGTH_LONG).show();
+                updateView(); return;
             }
-            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putString(HOST, ip).apply();
-            report("settings", true, "Decoder address saved: " + ip);
-        }
-
-        @JavascriptInterface public void sendRemoteKey(String key) {
-            if (key == null || !REMOTE_KEYS.contains(key)) {
-                report("remote", false, "Unsupported remote key");
-                return;
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(SCANNING, true)
+                    .putString(PENDING, "")
+                    .putString(STATUS, "Navigate to Live TV / channel guide inside Totalplay and scroll through the channel list. Return here to view detected entries.").apply();
+            openOfficial();
+        }); }
+        @JavascriptInterface public void stopScan() { runOnUiThread(() -> {
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(SCANNING, false).apply();
+            updateView();
+        }); }
+        @JavascriptInterface public void refresh() { updateView(); }
+        @JavascriptInterface public void playObservedChannel(String number) { runOnUiThread(() -> {
+            if (number == null || !number.matches("[0-9]{1,3}") || !accessibilityReady()) {
+                Toast.makeText(MainActivity.this, "Enable Accessibility and select a discovered channel", Toast.LENGTH_LONG).show(); return;
             }
-            remoteQueue.execute(() -> {
-                try {
-                    sendKey(decoderHost(), key);
-                    report("remote", true, "Sent " + key);
-                } catch (Exception e) { report("remote", false, "Remote: " + e.getMessage()); }
-            });
-        }
-
-        @JavascriptInterface public void testDecoder() {
-            // The test opens the decoder's Guide: a visible, non-destructive acknowledgement.
-            remoteQueue.execute(() -> {
-                try {
-                    sendKey(decoderHost(), "KEY_GUIDE");
-                    report("test", true, "Guide command sent to decoder " + decoderHost());
-                } catch (Exception e) { report("test", false, "Cannot reach decoder: " + e.getMessage()); }
-            });
-        }
-
-        @JavascriptInterface public void tuneChannel(String value, int waitMs) {
-            if (value == null || !value.matches("[0-9]{1,3}")) {
-                report("tune", false, "Enter a channel number (1–999)");
-                return;
-            }
-            final int number = Integer.parseInt(value);
-            if (number < 1 || number > 999) {
-                report("tune", false, "Channel number must be 1–999");
-                return;
-            }
-            if (!tuning.compareAndSet(false, true)) {
-                report("tune", false, "Another channel is still being selected");
-                return;
-            }
-            final String digits = String.format(Locale.US, "%03d", number);
-            final int pause = Math.max(500, Math.min(8000, waitMs));
-            report("tune-start", true, "Selecting channel " + digits + " on the decoder");
-            remoteQueue.execute(() -> {
-                try {
-                    String host = decoderHost();
-                    for (int i = 0; i < digits.length(); i++) {
-                        sendKey(host, digits.substring(i, i + 1));
-                        if (i + 1 < digits.length()) Thread.sleep(100);
-                    }
-                    Thread.sleep(pause);
-                    sendKey(host, "ok");
-                    report("tune", true, "Channel " + digits + " sent to the decoder");
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                    report("tune", false, "Channel selection interrupted");
-                } catch (Exception e) { report("tune", false, "Channel selection failed: " + e.getMessage()); }
-                finally { tuning.set(false); }
-            });
-        }
-
-        @JavascriptInterface public void openTotalplay() {
-            runOnUiThread(() -> {
-                Intent intent = getPackageManager().getLaunchIntentForPackage("com.TotalPlay.totalplay");
-                if (intent == null) {
-                    Toast.makeText(MainActivity.this, "The official Totalplay app is not installed on this device", Toast.LENGTH_LONG).show();
-                    return;
+            // Match only observed channels. Never send untrusted intents or private playback tokens.
+            String json = getSharedPreferences(PREFS, MODE_PRIVATE).getString(CHANNELS, "[]");
+            boolean known = false;
+            try {
+                org.json.JSONArray observed = new org.json.JSONArray(json);
+                for (int i = 0; i < observed.length(); i++) {
+                    if (number.equals(observed.getJSONObject(i).optString("number"))) { known = true; break; }
                 }
-                try { startActivity(intent); }
-                catch (ActivityNotFoundException | SecurityException ex) {
-                    Toast.makeText(MainActivity.this, "Cannot open the official Totalplay app", Toast.LENGTH_LONG).show();
-                }
-            });
-        }
+            } catch (Exception ignored) { }
+            if (!known) { Toast.makeText(MainActivity.this, "Channel has not been observed in the official guide", Toast.LENGTH_LONG).show(); return; }
+            getSharedPreferences(PREFS, MODE_PRIVATE).edit().putBoolean(SCANNING, false)
+                .putString(PENDING, number)
+                .putString(STATUS, "Find channel " + number + " in the official app's guide. TV Guide Discovery will try to select its visible entry.").apply();
+            openOfficial();
+        }); }
     }
-
+    @Override protected void onResume() { super.onResume(); updateView(); }
     @Override public void onBackPressed() {
-        if (webView != null) webView.evaluateJavascript("window.__tvBack && window.__tvBack()", value -> {
-            if (!"true".equals(value)) MainActivity.super.onBackPressed();
+        if (webView != null) webView.evaluateJavascript("window.__tvBack && window.__tvBack()", result -> {
+            if (!"true".equals(result)) MainActivity.super.onBackPressed();
         });
         else super.onBackPressed();
     }
-
     @Override public boolean dispatchKeyEvent(KeyEvent event) {
         if (event.getAction() == KeyEvent.ACTION_DOWN && event.getKeyCode() == KeyEvent.KEYCODE_MENU) {
-            if (webView != null) webView.evaluateJavascript("document.getElementById('remoteToggle')?.focus()", null);
+            if (webView != null) webView.evaluateJavascript("document.getElementById('connect')?.focus()", null);
             return true;
         }
         return super.dispatchKeyEvent(event);
     }
-
-    @Override public void onDestroy() {
-        remoteQueue.shutdownNow();
-        if (webView != null) {
-            webView.removeJavascriptInterface("AndroidBridge");
-            webView.destroy();
-            webView = null;
-        }
+    @Override protected void onDestroy() {
+        if (webView != null) { webView.removeJavascriptInterface("AndroidBridge"); webView.destroy(); webView = null; }
         super.onDestroy();
     }
 }
