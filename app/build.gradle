@@ -1,5 +1,9 @@
 plugins { id 'com.android.application' }
 
+// Every GitHub Actions build needs a newer Android versionCode so Obtainium
+// can recognize it as an update. Local builds keep the prototype baseline.
+def ciBuildNumber = (System.getenv('GITHUB_RUN_NUMBER') ?: '0').toInteger()
+
 android {
     namespace 'com.fv.totalplaytv.ui'
     compileSdk 35
@@ -7,8 +11,8 @@ android {
         applicationId 'com.fv.totalplaytv.ui'
         minSdk 26
         targetSdk 32
-        versionCode 1
-        versionName '0.1.0-prototype'
+        versionCode 1000 + ciBuildNumber
+        versionName "0.1.${ciBuildNumber}-prototype"
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
