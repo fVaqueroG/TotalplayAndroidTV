@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_description">Optional TV Guide Discovery: while enabled and explicitly scanning, reads only visible channel-like labels in the original Totalplay app to populate your personal Android TV guide. Does not collect passwords, account tokens, or video data. You can turn it off in Android Accessibility settings.</string>
+</resources>
