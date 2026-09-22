@@ -58,7 +58,7 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="v0.1.${GITHUB_RUN_NUMBER}-prototype"
-          NOTES='Experimental, user-enabled D-pad pointer companion for the original signed Totalplay app. Open companion, enable Totalplay D-pad Pointer under Android Accessibility settings, then open original Totalplay. Arrow keys move the pointer, Enter taps, Back remains unchanged. Original app login and playback remain inside Totalplay; this build does not create a standalone login, full guide, or 16:9 redesign. APK uses persistent signing key for in-place updates.'
+          NOTES='Experimental Android TV companion for the original signed Totalplay app. NEW: separate Totalplay TV+ tile in the Android TV app row launches the original phone/tablet APK, even when it is hidden under System Apps. The existing companion tile provides optional D-pad pointer accessibility setup. This launcher does not override Totalplay portrait orientation, guarantee fullscreen landscape, change login or playback, or modify the official APK. APK uses persistent signing key for in-place Obtainium updates.'
           if gh release view "$VERSION" > /dev/null 2>&1; then
             gh release upload "$VERSION" "Totalplay-TV-Guide-${VERSION}.apk" --clobber
           else
